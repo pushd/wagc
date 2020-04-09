@@ -1,32 +1,33 @@
 package com.pushd.wagc;
 
 public class Wagc {
-    static long mNativeHandle;
-    static Wagc mInstance;
-
-    native long init();
-    native void destroy(long handle);
-    native int process(long handle, short[] samples, int micLevel, short[] outArray);
+    private static long mNativeHandle;
+    private static Wagc mInstance;
 
     static {
         System.loadLibrary("wagc");
     }
 
-    static Wagc getInstance() {
+    public static Wagc getInstance() {
         if (mInstance == null) {
             mInstance = new Wagc();
         }
         return mInstance;
     }
 
-    private Wagc() {
-        mNativeHandle = init();
-    }
+    public native int process(long handle, short[] samples, int micLevel, short[] outArray);
+
 
     @Override
     protected void finalize() throws Throwable {
         super.finalize();
         destroy(mNativeHandle);
         mNativeHandle = 0;
+    }
+
+    private native long init();
+    private native void destroy(long handle);
+    private Wagc() {
+        mNativeHandle = init();
     }
 }
