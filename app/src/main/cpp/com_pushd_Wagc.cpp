@@ -4,6 +4,8 @@
 // Taken from examples at https://github.com/cpuimage/WebRTC_AGC
 
 #include <stdlib.h>
+#include <sys/types.h>
+#include <math.h>
 #include <jni.h>
 #include <android/log.h>
 
