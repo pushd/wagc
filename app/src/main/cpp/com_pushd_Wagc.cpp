@@ -22,19 +22,19 @@
 extern "C" {
 #endif
 
-int agcProcess(int16_t *buffer, uint32_t sampleRate, size_t samplesCount, int16_t agcMode, void *agcInst, int inMicLevel, int16_t *out_buffer) {
-    size_t num_bands = 1;
+int agcProcess(int16_t *buffer, uint32_t sampleRate, size_t samplesCount, void *agcInst, int16_t *outBuffer) {
+    size_t numBands = 1;
+    int inMicLevel = 0;
     int outMicLevel = -1;
-    uint8_t saturationWarning = 1;                 //是否有溢出发生，增益放大以后的最大值超过了65536
-    int16_t echo = 0;                                 //增益放大是否考虑回声影响
-    size_t samples = MIN(160, sampleRate / 100);
-    size_t nTotal = (samplesCount / samples);
+    uint8_t saturationWarning = 1;
+    int16_t echo = 0;
+    size_t numSamples10ms = MIN(160, sampleRate / 100);
+    size_t nIterations = (samplesCount / numSamples10ms);
     int16_t *input = buffer;
-    int16_t *out16 = out_buffer;
+    int16_t *out16 = outBuffer;
 
-    for (int i = 0; i < nTotal; i++) {
-        inMicLevel = 0;
-        int nAgcRet = WebRtcAgc_Process(agcInst, (const int16_t *const *) &input, num_bands, samples,
+    for (int i = 0; i < nIterations; i++) {
+        int nAgcRet = WebRtcAgc_Process(agcInst, (const int16_t *const *) &input, numBands, numSamples10ms,
                                         (int16_t *const *) &out16, inMicLevel, &outMicLevel, echo,
                                         &saturationWarning);
 
@@ -43,17 +43,19 @@ int agcProcess(int16_t *buffer, uint32_t sampleRate, size_t samplesCount, int16_
             WebRtcAgc_Free(agcInst);
             return -1;
         }
-        input += samples;
+        input += numSamples10ms;
+        out16 += numSamples10ms;
     }
 
-    const size_t remainedSamples = samplesCount - nTotal * samples;
-    if (remainedSamples > 0) {
-        if (nTotal > 0) {
-            input = input - samples + remainedSamples;
+    const size_t remainingSamples = samplesCount - (nIterations * numSamples10ms);
+    if (remainingSamples > 0) {
+        if (nIterations > 0) {
+            int offset = numSamples10ms + remainingSamples;
+            input -= offset;
+            out16 -= offset;
         }
 
-        inMicLevel = 0;
-        int nAgcRet = WebRtcAgc_Process(agcInst, (const int16_t *const *) &input, num_bands, samples,
+        int nAgcRet = WebRtcAgc_Process(agcInst, (const int16_t *const *) &input, numBands, numSamples10ms,
                                         (int16_t *const *) &out16, inMicLevel, &outMicLevel, echo,
                                         &saturationWarning);
 
@@ -62,8 +64,7 @@ int agcProcess(int16_t *buffer, uint32_t sampleRate, size_t samplesCount, int16_
             WebRtcAgc_Free(agcInst);
             return -1;
         }
-        memcpy(&input[samples-remainedSamples], &out_buffer[samples-remainedSamples], remainedSamples * sizeof(int16_t));
-        input += samples;
+        memcpy(&input[numSamples10ms-remainingSamples], &outBuffer[numSamples10ms-remainingSamples], remainingSamples * sizeof(int16_t));
     }
 
     return outMicLevel;
@@ -71,16 +72,16 @@ int agcProcess(int16_t *buffer, uint32_t sampleRate, size_t samplesCount, int16_
 
 JNIEXPORT jlong Java_com_pushd_wagc_Wagc_init(JNIEnv *, jobject) {
     WebRtcAgcConfig agcConfig;
-    agcConfig.compressionGaindB = 9; // default 9 dB
+    agcConfig.compressionGaindB = 9; // default 9 dB, maximum gain the digital compression stage many apply in dB
     agcConfig.limiterEnable = 1; // default kAgcTrue (on)
-    agcConfig.targetLevelDbfs = 3; // default 3 (-3 dBOv)
-    int sampleRate = 16000;
+    agcConfig.targetLevelDbfs = 3; // default 3 (-3 dBOv), the decrease value relative to Full Scale (0). The smaller the value, the louder the sound.
+    uint32_t sampleRate = 16000;
     int minLevel = 0;
     int maxLevel = 255;
 
     void *agcInst = WebRtcAgc_Create();
     if (agcInst == NULL) return -1;
-    int status = WebRtcAgc_Init(agcInst, minLevel, maxLevel, kAgcModeAdaptiveDigital, sampleRate);
+    int status = WebRtcAgc_Init(agcInst, minLevel, maxLevel, kAgcModeFixedDigital, sampleRate);
     if (status != 0) {
         LOGE("WebRtcAgc_Init fail status: %d", status);
         WebRtcAgc_Free(agcInst);
@@ -99,17 +100,15 @@ JNIEXPORT void Java_com_pushd_wagc_Wagc_destroy(JNIEnv *, jobject, jlong longHan
     WebRtcAgc_Free((void*)longHandle);
 }
 
-JNIEXPORT jint Java_com_pushd_wagc_Wagc_process(JNIEnv *env, jobject, jlong longHandle, jshortArray inArray, jint micLevel, jshortArray outArray) {
+JNIEXPORT jint Java_com_pushd_wagc_Wagc_process(JNIEnv *env, jobject, jlong longHandle, jshortArray inArray, jshortArray outArray) {
     jsize samplesCount = env->GetArrayLength(inArray);
     jshort* inBuffer = env->GetShortArrayElements(inArray, 0);
     jshort* outBuffer = env->GetShortArrayElements(outArray, 0);
 
-    int outMicLevel = agcProcess((int16_t*)inBuffer,
+    int outMicLevel = agcProcess(inBuffer,
                                  (uint32_t)16000,
                                  (size_t)samplesCount,
-                                 kAgcModeAdaptiveDigital,
                                  (void*)longHandle,
-                                 micLevel,
                                  outBuffer);
 
     env->ReleaseShortArrayElements(inArray, inBuffer, JNI_COMMIT);

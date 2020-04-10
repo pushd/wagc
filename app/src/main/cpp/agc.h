@@ -19,6 +19,7 @@
 
 #include <stdint.h>  // NOLINT(build/include)
 #include <string.h>
+#include <math.h>
 
 #ifdef WEBRTC_AGC_DEBUG_DUMP
 #include <stdio.h>

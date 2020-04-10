@@ -15,8 +15,8 @@ public class Wagc {
         return mInstance;
     }
 
-    public int process(short[] samples, int micLevel, short[] outArray) {
-        return process(mNativeHandle, samples, micLevel, outArray);
+    public int process(short[] samples, short[] outArray) {
+        return process(mNativeHandle, samples, outArray);
     }
 
     @Override
@@ -28,7 +28,7 @@ public class Wagc {
 
     private native long init();
     private native void destroy(long handle);
-    private native int process(long handle, short[] samples, int micLevel, short[] outArray);
+    private native int process(long handle, short[] samples, short[] outArray);
 
     private Wagc() {
         mNativeHandle = init();
